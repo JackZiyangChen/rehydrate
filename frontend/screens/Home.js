@@ -1,12 +1,50 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     View, Text, Button, StyleSheet, Image, Animated, ImageBackground, TouchableOpacity
 } from 'react-native';
 import ProgressBar from 'react-native-progress/Bar';
+import BottleModal from '../components/BottleModal';
+
+import { fetchFieldsFromUser, updateFieldsForUser } from '../../backend/firebaseClient';
 
 export default function GamePage() {
     const MAX_HEIGHT = 200;
     const MAX_XP = 100;
+
+    useEffect(() => {
+        // Fetch user data from Firebase
+        fetchFieldsFromUser('NhIbPOAN57GFxiSJYIE').then((data) => {
+            console.log(data);
+            setCoins(data.coins);
+            setXp(data.xp);
+            setWaterLevel(new Animated.Value(data.threshold_percent / 100 * MAX_HEIGHT));
+        }).catch((error) => {
+            console.log(error);
+        });
+    }, []);
+
+
+    const [isModalVisible, setModalVisible] = useState(false);
+    const [selectedBottle, setSelectedBottle] = useState(null);
+    const bottles = [
+        { name: 'Bottle1', image: require('../../assets/bottle.png'), unlocked: true },
+        { name: 'Bottle2', image: require('../../assets/bottle.png'), unlocked: false },
+        // ... Add more bottles here
+    ];
+
+    const [lastDrinkTime, setLastDrinkTime] = useState(null);
+    const [buttonDisabled, setButtonDisabled] = useState(false);
+
+    const handleDrink = () => {
+        const currentTime = new Date().getTime();
+        setLastDrinkTime(currentTime);
+        setButtonDisabled(true);
+
+        // Disable button for 3 minutes (180000 ms)
+        setTimeout(() => {
+            setButtonDisabled(false);
+        }, 180000);
+    };
 
     const [waterLevel, setWaterLevel] = useState(new Animated.Value(0.4 * MAX_HEIGHT));
     const [coins, setCoins] = useState(0);
@@ -21,6 +59,15 @@ export default function GamePage() {
 
         setCoins(coins + 1);
         setXp((xp + 10) % MAX_XP);
+    };
+
+    const toggleModal = () => {
+        setModalVisible(!isModalVisible);
+    };
+
+    const handleSelectBottle = (bottle) => {
+        setSelectedBottle(bottle);
+        toggleModal();
     };
 
     return (
@@ -58,14 +105,23 @@ export default function GamePage() {
                 </Text>
             </View>
 
-            <TouchableOpacity style={styles.waterButton} onPress={addWater}>
+            <TouchableOpacity disabled={buttonDisabled} style={buttonDisabled ? styles.waterButtonDisabled : styles.waterButton} onPress={() => {
+                addWater()
+                handleDrink()
+            }}>
                 <Image source={require('../../assets/water-drop.png')} style={styles.waterIcon} />
                 <Text style={styles.waterButtonText}>Drink Water</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.shopButton} onPress={() => { /* Navigate to shop */ }}>
+            <TouchableOpacity style={styles.shopButton} onPress={() => { toggleModal() }}>
                 <Text style={styles.shopButtonText}>Open Shop</Text>
             </TouchableOpacity>
+            <BottleModal
+                isVisible={isModalVisible}
+                toggleModal={toggleModal}
+                bottles={bottles}
+                selectBottle={handleSelectBottle}
+            />
 
         </ImageBackground>
     );
@@ -134,6 +190,16 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 20,
+    },
+    waterButtonDisabled: {
+        flexDirection: 'row',
+        padding: 10,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 20,
+        backgroundColor: '#B0C4DE',  // Lighter blue to indicate disabled state
+        opacity: 0.7,  // Slightly transparent
     },
     waterButtonText: {
         color: 'white',
