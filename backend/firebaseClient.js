@@ -37,4 +37,5 @@ const updateFieldsForUser = async (userId, updatedFields) => {
     return update(userRef, updatedFields);
 };
 
-export { fetchFieldsFromUser, updateFieldsForUser };
+
+export { fetchFieldsFromUser, updateFieldsForUser, db };

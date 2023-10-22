@@ -4,8 +4,9 @@ import {
 } from 'react-native';
 import ProgressBar from 'react-native-progress/Bar';
 import BottleModal from '../components/BottleModal';
+import * as Notifications from 'expo-notifications';
 
-import { fetchFieldsFromUser, updateFieldsForUser } from '../../backend/firebaseClient';
+import { fetchFieldsFromUser, updateFieldsForUser, db } from '../../backend/firebaseClient';
 
 export default function GamePage() {
     const MAX_HEIGHT = 200;
@@ -22,6 +23,55 @@ export default function GamePage() {
             console.log(error);
         });
     }, []);
+
+    async function sendNotification() {
+        if (data && data.threshold_percent < threshold) {
+            const permission = await requestNotificationPermission();
+            if (permission === 'granted') {
+                Notifications.scheduleNotificationAsync({
+                    content: {
+                        title: 'Threshold Alert',
+                        body: `You've gone below the threshold of ${threshold}%!`,
+                        sound: 'default',
+                    },
+                    trigger: null,
+                });
+            }
+        }
+    }
+
+    useEffect(() => {
+        const rootRef = ref(db);
+
+        // Set up the listener
+        const listener = onValue(rootRef,
+            (snapshot) => {
+                const key = snapshot.key;
+                const data = snapshot.val();
+                console.log(data);
+                setCoins(data.coins);
+                setXp(data.xp);
+                setWaterLevel(new Animated.Value(data.threshold_percent / 100 * MAX_HEIGHT));
+
+                if (key == 'NhIbPOAN57GFxiSJYIE' && data.threshold_percent < 30) {
+                    // send a notification
+                    console.log("send a notification");
+                    sendNotification();
+
+                }
+            },
+            (err) => {
+                console.log(`Encountered error: ${err}`);
+            }
+        );
+
+        // Clean up the listener when the component unmounts
+        return () => {
+            off(rootRef, listener);
+        };
+    }, []);
+
+
 
 
     const [isModalVisible, setModalVisible] = useState(false);
