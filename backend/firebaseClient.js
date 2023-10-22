@@ -1,6 +1,6 @@
 // Import required functions and classes from SDK v9
 import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, get, update } from 'firebase/database';
+import { getDatabase, ref, get, update, serverTimestamp } from 'firebase/database';
 
 // Your Firebase config
 const firebaseConfig = {
@@ -37,5 +37,10 @@ const updateFieldsForUser = async (userId, updatedFields) => {
     return update(userRef, updatedFields);
 };
 
+const getTimestamp = () => {
+    return serverTimestamp();
+}
 
-export { fetchFieldsFromUser, updateFieldsForUser, db };
+
+
+export { fetchFieldsFromUser, updateFieldsForUser, db, getTimestamp };

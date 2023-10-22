@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { ref, onChildChanged, off } from 'firebase/database';
 import {
     View, Text, Button, StyleSheet, Image, Animated, ImageBackground, TouchableOpacity
 } from 'react-native';
@@ -6,7 +7,7 @@ import ProgressBar from 'react-native-progress/Bar';
 import BottleModal from '../components/BottleModal';
 import * as Notifications from 'expo-notifications';
 
-import { fetchFieldsFromUser, updateFieldsForUser, db } from '../../backend/firebaseClient';
+import { fetchFieldsFromUser, updateFieldsForUser, db, getTimestamp } from '../../backend/firebaseClient';
 
 export default function GamePage() {
     const MAX_HEIGHT = 200;
@@ -14,49 +15,80 @@ export default function GamePage() {
 
     useEffect(() => {
         // Fetch user data from Firebase
-        fetchFieldsFromUser('NhIbPOAN57GFxiSJYIE').then((data) => {
-            console.log(data);
+        fetchFieldsFromUser('-NhIgt4IOQLxbhFnoGZZ').then((data) => {
             setCoins(data.coins);
             setXp(data.xp);
-            setWaterLevel(new Animated.Value(data.threshold_percent / 100 * MAX_HEIGHT));
+            setWaterLevel(new Animated.Value(data.threshold_percent * MAX_HEIGHT));
+            setPercentage(data.threshold_percent * 100);
         }).catch((error) => {
             console.log(error);
         });
     }, []);
 
     async function sendNotification() {
-        if (data && data.threshold_percent < threshold) {
-            const permission = await requestNotificationPermission();
-            if (permission === 'granted') {
-                Notifications.scheduleNotificationAsync({
-                    content: {
-                        title: 'Threshold Alert',
-                        body: `You've gone below the threshold of ${threshold}%!`,
-                        sound: 'default',
-                    },
-                    trigger: null,
-                });
-            }
+        const permission = await Notifications.getPermissionsAsync();
+        if (permission.granted) {
+            console.log('go')
+            await Notifications.scheduleNotificationAsync({
+                content: {
+                    title: 'Water Alert!',
+                    body: `Don't forget to drink more water!`,
+                    sound: 'default',
+                },
+                trigger: {
+                    seconds: 1,
+                },
+            });
+        } else {
+            console.log(permission)
         }
     }
+
 
     useEffect(() => {
         const rootRef = ref(db);
 
         // Set up the listener
-        const listener = onValue(rootRef,
+        const listener = onChildChanged(rootRef,
             (snapshot) => {
                 const key = snapshot.key;
                 const data = snapshot.val();
+                console.log(key)
                 console.log(data);
-                setCoins(data.coins);
-                setXp(data.xp);
-                setWaterLevel(new Animated.Value(data.threshold_percent / 100 * MAX_HEIGHT));
 
-                if (key == 'NhIbPOAN57GFxiSJYIE' && data.threshold_percent < 30) {
-                    // send a notification
-                    console.log("send a notification");
-                    sendNotification();
+
+                // console.log('key', snapshot.key)
+                if (key == '-NhIgt4IOQLxbhFnoGZZ') {
+
+                    const data = snapshot.val();
+                    // console.log(data);
+                    setCoins(data.coins);
+                    setXp(data.xp);
+                    setPercentage(data.threshold_percent * 100);
+
+                    // bots = []
+                    // let i = 0;
+                    // for (i = 0; i < data.bottles; i++) {
+                    //     bots.push({ name: 'Bottle' + (i + 1), image: require('../../assets/bottle.png'), unlocked: true })
+                    // }
+                    // for (i = data.bottles; i < 5; i++) {
+                    //     bots.push({ name: 'Bottle' + (i + 1), image: require('../../assets/bottle.png'), unlocked: false })
+                    // }
+                    // setBottles(bots)
+                    // console.log('before', waterLevel._value)
+                    // console.log('after', data.threshold_percent * MAX_HEIGHT)
+
+                    Animated.timing(waterLevel, {
+                        toValue: data.threshold_percent * MAX_HEIGHT,
+                        duration: 500,
+                        useNativeDriver: false,
+                    }).start(() => {
+                        setWaterLevel(new Animated.Value(data.threshold_percent * MAX_HEIGHT));
+                    });
+                    if (data.threshold_percent < 0.3) {
+                        console.log("send a notification");
+                        sendNotification();
+                    }
 
                 }
             },
@@ -64,11 +96,6 @@ export default function GamePage() {
                 console.log(`Encountered error: ${err}`);
             }
         );
-
-        // Clean up the listener when the component unmounts
-        return () => {
-            off(rootRef, listener);
-        };
     }, []);
 
 
@@ -76,11 +103,12 @@ export default function GamePage() {
 
     const [isModalVisible, setModalVisible] = useState(false);
     const [selectedBottle, setSelectedBottle] = useState(null);
-    const bottles = [
+    const [percentage, setPercentage] = useState(0);
+    const [bottles, setBottles] = useState([
         { name: 'Bottle1', image: require('../../assets/bottle.png'), unlocked: true },
         { name: 'Bottle2', image: require('../../assets/bottle.png'), unlocked: false },
         // ... Add more bottles here
-    ];
+    ]);
 
     const [lastDrinkTime, setLastDrinkTime] = useState(null);
     const [buttonDisabled, setButtonDisabled] = useState(false);
@@ -93,22 +121,36 @@ export default function GamePage() {
         // Disable button for 3 minutes (180000 ms)
         setTimeout(() => {
             setButtonDisabled(false);
-        }, 180000);
+        }, 1000);
     };
 
     const [waterLevel, setWaterLevel] = useState(new Animated.Value(0.4 * MAX_HEIGHT));
     const [coins, setCoins] = useState(0);
     const [xp, setXp] = useState(0);
 
-    const addWater = () => {
-        Animated.timing(waterLevel, {
-            toValue: Math.min(MAX_HEIGHT, waterLevel._value + 50),
-            duration: 500,
-            useNativeDriver: false,
-        }).start();
+    useEffect(() => {
+        if (xp > MAX_XP) {
+            setXp(0)
+            bottles[1].unlocked = true
+        }
+    }, [xp])
 
-        setCoins(coins + 1);
-        setXp((xp + 10) % MAX_XP);
+    const addWater = () => {
+
+
+        // Update Firebase
+        console.log('percetnage', percentage)
+        updateFieldsForUser('-NhIgt4IOQLxbhFnoGZZ', {
+            coins: coins + 1,
+            xp: (xp + 50) % MAX_XP,
+            threshold_percent: Math.min(1, (percentage / 100) + 0.2),
+            hydrate_timestamp: getTimestamp()
+        }).then(() => {
+            console.log('Updated Firebase');
+        }).catch((error) => {
+            console.log(error);
+        })
+
     };
 
     const toggleModal = () => {
@@ -151,7 +193,7 @@ export default function GamePage() {
                     resizeMode="contain"
                 />
                 <Text style={styles.percentageText}>
-                    {(waterLevel._value / MAX_HEIGHT * 100).toFixed(0)}%
+                    {percentage.toFixed(0)}%
                 </Text>
             </View>
 
@@ -166,6 +208,28 @@ export default function GamePage() {
             <TouchableOpacity style={styles.shopButton} onPress={() => { toggleModal() }}>
                 <Text style={styles.shopButtonText}>Open Shop</Text>
             </TouchableOpacity>
+            <Button title="decrease water tes" onPress={() => {
+                Animated.timing(waterLevel, {
+                    toValue: Math.max(0, waterLevel._value - 20),
+                    duration: 500,
+                    useNativeDriver: false,
+                }).start();
+
+                setCoins(coins + 1);
+                setXp((xp + 10) % MAX_XP);
+
+                // Update Firebase
+                updateFieldsForUser('-NhIgt4IOQLxbhFnoGZZ', {
+                    coins: coins - 1,
+                    xp: (xp - 10) % MAX_XP,
+                    threshold_percent: Math.min(1, (waterLevel._value - 20) / MAX_HEIGHT),
+                    hydrate_timestamp: getTimestamp()
+                }).then(() => {
+                    console.log('Updated Firebase');
+                }).catch((error) => {
+                    console.log(error);
+                })
+            }} />
             <BottleModal
                 isVisible={isModalVisible}
                 toggleModal={toggleModal}
@@ -306,6 +370,7 @@ const styles = StyleSheet.create({
         textShadowColor: 'rgba(255, 255, 255, 0.85)',
         textShadowOffset: { width: -1, height: 1 },
         textShadowRadius: 2,
+        zIndex: 5,
     },
     coinText: {
         fontSize: 26,
